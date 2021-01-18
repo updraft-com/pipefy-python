@@ -18,13 +18,12 @@ class Pipefy(object):
         if mock_server:
             self.endpoint = 'https://private-a6c28-pipefypipe.apiary-mock.com/queries'
 
-
     def request(self, query, headers={}):
         _headers = self.headers
         _headers.update(headers)
         response = requests.post(
             self.endpoint,
-            json={ "query": query },
+            json={"query": query},
             headers=_headers
         )
         try:
@@ -39,7 +38,6 @@ class Pipefy(object):
                 raise PipefyException(error.get('message'))
         return response
 
-
     def __prepare_json_dict(self, data_dict):
         data_response = json.dumps(data_dict)
         rex = re.compile(r'"(\S+)":')
@@ -47,51 +45,46 @@ class Pipefy(object):
             data_response = data_response.replace('"%s"' % field, field)
         return data_response
 
-
     def __prepare_json_list(self, data_list):
         return '[ %s ]' % ', '.join([self.__prepare_json_dict(data) for data in data_list])
-
 
     def pipes(self, ids=[], response_fields=None, headers={}):
         """ List pipes: Get pipes by their identifiers. """
 
         response_fields = response_fields or 'id name phases { name cards (first: 5)' \
-                                                    ' { edges { node { id title } } } }'
+            ' { edges { node { id title } } } }'
         query = '{ pipes (ids: [%(ids)s]) { %(response_fields)s } }' % {
             'ids': ', '.join([json.dumps(id) for id in ids]),
             'response_fields': response_fields,
         }
         return self.request(query, headers).get('data', {}).get('pipes', [])
 
-
     def pipe(self, id, response_fields=None, headers={}):
         """ Show pipe: Get a pipe by its identifier. """
 
         response_fields = response_fields or 'id name start_form_fields { label id }' \
-                                                    ' labels { name id } phases { name fields { label id }' \
-                                                    ' cards(first: 5) { edges { node { id, title } } } }'
+            ' labels { name id } phases { name id fields { label id }' \
+            ' cards(first: 5) { edges { node { id, title } } } }'
         query = '{ pipe (id: %(id)s) { %(response_fields)s } }' % {
             'id': json.dumps(id),
             'response_fields': response_fields,
         }
         return self.request(query, headers).get('data', {}).get('pipe', [])
 
-
     def clonePipes(self, organization_id, pipe_template_ids=[], response_fields=None, headers={}):
         """ Clone pipe: Mutation to clone a pipe, in case of success a query is returned. """
 
         response_fields = response_fields or 'pipes { id name }'
         query = 'mutation { clonePipes(input: { organization_id: %(organization_id)s' \
-                    ' pipe_template_ids: [%(pipe_template_ids)s] }) { %(response_fields)s } }' % {
-            'organization_id': json.dumps(organization_id),
-            'pipe_template_ids': ', '.join([json.dumps(id) for id in ids]),
-            'response_fields': response_fields,
-        }
+            ' pipe_template_ids: [%(pipe_template_ids)s] }) { %(response_fields)s } }' % {
+                'organization_id': json.dumps(organization_id),
+                'pipe_template_ids': ', '.join([json.dumps(id) for id in ids]),
+                'response_fields': response_fields,
+            }
         return self.request(query, headers).get('data', {}).get('clonePipes', {}).get('pipe', [])
 
-
     def createPipe(self, organization_id, name, labels=[], members=[], phases=[],
-                            start_form_fields=[], preferences={},  response_fields=None, headers={}):
+                   start_form_fields=[], preferences={},  response_fields=None, headers={}):
         """ Create pipe: Mutation to create a pipe, in case of success a query is returned. """
 
         response_fields = response_fields or 'pipe { id name }'
@@ -121,10 +114,9 @@ class Pipefy(object):
         }
         return self.request(query, headers).get('data', {}).get('createPipe', {}).get('pipe', [])
 
-
     def updatePipe(self, id, icon=None, title_field_id=None, public=None, public_form=None,
-                        only_assignees_can_edit_cards=None,  anyone_can_create_card=None,
-                        expiration_time_by_unit=None, expiration_unit=None, response_fields=None, headers={}):
+                   only_assignees_can_edit_cards=None,  anyone_can_create_card=None,
+                   expiration_time_by_unit=None, expiration_unit=None, response_fields=None, headers={}):
         """ Update pipe: Mutation to update a pipe, in case of success a query is returned. """
 
         response_fields = response_fields or 'pipe { id name }'
@@ -158,7 +150,6 @@ class Pipefy(object):
         }
         return self.request(query, headers).get('data', {}).get('updatePipe', {}).get('pipe', [])
 
-
     def deletePipe(self, id, response_fields=None, headers={}):
         """ Delete pipe: Mutation to delete a pipe, in case of success success: true is returned. """
 
@@ -168,7 +159,6 @@ class Pipefy(object):
             'response_fields': response_fields,
         }
         return self.request(query, headers).get('data', {}).get('deletePipe', {})
-
 
     def phase(self, id, response_fields=None, headers={}):
         """ Show phase: Get a phase by its identifier. """
@@ -180,9 +170,24 @@ class Pipefy(object):
         }
         return self.request(query, headers).get('data', {}).get('phase')
 
+    def phaseCards(self, id, response_fields=None, headers={}):
+        """ Get all the cards in a phase """
+        response_fields = response_fields or "node { id title }"
+        query_first = f"{{ phase(id: {id}) {{ name cards_count cards {{ pageInfo {{hasNextPage endCursor}} edges {{ {response_fields} }} }} }} }}"
+        r = self.request(query_first, headers)
+        hasNextPage = True
+        while hasNextPage:
+            for edge in r.get('data', {}).get('phase', {}).get('cards', {}).get('edges', []):
+                yield edge
+            hasNextPage = r.get('data', {}).get('phase', {}).get(
+                'cards', {}).get('pageInfo', {}).get('hasNextPage', False)
+            if hasNextPage:
+                after = r.get('data', {}).get('phase', {}).get('cards', {}).get('pageInfo', {}).get('endCursor', '')
+                query_next = f'{{ phase(id: {id}) {{ name cards_count cards(after: "{after}") {{ pageInfo {{hasNextPage endCursor}} edges {{ {response_fields} }} }} }} }}'
+                r = self.request(query_next, headers)
 
     def createPhase(self, pipe_id, name, done, lateness_time, description, can_receive_card_directly_from_draft,
-                            response_fields=None, headers={}):
+                    response_fields=None, headers={}):
         """ Create phase: Mutation to create a phase, in case of success a query is returned. """
 
         response_fields = response_fields or 'phase { id name }'
@@ -210,9 +215,8 @@ class Pipefy(object):
         }
         return self.request(query, headers).get('data', {}).get('createPhase', {}).get('phase')
 
-
     def updatePhase(self, id, name, done, description, can_receive_card_directly_from_draft,
-                            response_fields=None, headers={}):
+                    response_fields=None, headers={}):
         """ Update phase: Mutation to update a phase, in case of success a query is returned. """
 
         response_fields = response_fields or 'phase { id name }'
@@ -239,7 +243,6 @@ class Pipefy(object):
         }
         return self.request(query, headers).get('data', {}).get('updatePhase', {}).get('phase')
 
-
     def deletePhase(self, id, response_fields=None, headers={}):
         """ Delete phase: Mutation to delete a phase of a pipe, in case of success success: true is returned. """
 
@@ -250,9 +253,8 @@ class Pipefy(object):
         }
         return self.request(query, headers).get('data', {}).get('deletePhase', {})
 
-
     def createPhaseField(self, phase_id, type, label, options, description, required, editable,
-                            response_fields=None, headers={}):
+                         response_fields=None, headers={}):
         """ Create phase field: Mutation to create a phase field, in case of success a query is returned. """
 
         response_fields = response_fields or 'phase_field { id label }'
@@ -282,7 +284,6 @@ class Pipefy(object):
         }
         return self.request(query, headers).get('data', {}).get('createPhaseField', {}).get('phase_field')
 
-
     def updatePhaseField(self, id, label, options, required, editable, response_fields=None, headers={}):
         """ Update phase field: Mutation to update a phase field, in case of success a query is returned. """
 
@@ -309,7 +310,6 @@ class Pipefy(object):
         }
         return self.request(query, headers).get('data', {}).get('updatePhaseField', {}).get('phase_field')
 
-
     def deletePhaseField(self, id, response_fields=None, headers={}):
         """ Delete phase field: Mutation to delete a phase field, in case of success success: true is returned. """
 
@@ -319,7 +319,6 @@ class Pipefy(object):
             'response_fields': response_fields,
         }
         return self.request(query, headers).get('data', {}).get('deletePhaseField', {})
-
 
     def createLabel(self, pipe_id, name, color, response_fields=None, headers={}):
         """ Create label: Mutation to create a label, in case of success a query is returned. """
@@ -343,7 +342,6 @@ class Pipefy(object):
         }
         return self.request(query, headers).get('data', {}).get('createLabel', {}).get('label')
 
-
     def updateLabel(self, id, name, color, response_fields=None, headers={}):
         """ Update label: Mutation to update a label, in case of success a query is returned. """
 
@@ -366,7 +364,6 @@ class Pipefy(object):
         }
         return self.request(query, headers).get('data', {}).get('updateLabel', {}).get('label')
 
-
     def deleteLabel(self, id, response_fields=None, headers={}):
         """ Delete label: Mutation to delete a label, in case of success success: true is returned. """
 
@@ -377,13 +374,12 @@ class Pipefy(object):
         }
         return self.request(query, headers).get('data', {}).get('deleteLabel', {})
 
-
     def cards(self, pipe_id, count=10, search={}, response_fields=None, headers={}):
         """ List cards: Get cards by pipe identifier. """
 
         response_fields = response_fields or 'edges { node { id title assignees { id }' \
-                ' comments { text } comments_count current_phase { name } done due_date ' \
-                'fields { name value } labels { name } phases_history { phase { name } firstTimeIn lastTimeOut } url } }'
+            ' comments { text } comments_count current_phase { name } done due_date ' \
+            'fields { name value } labels { name } phases_history { phase { name } firstTimeIn lastTimeOut } url } }'
         query = '{ cards(pipe_id: %(pipe_id)s, first: %(count)s, search: %(search)s) { %(response_fields)s } }' % {
             'pipe_id': json.dumps(pipe_id),
             'count': json.dumps(count),
@@ -392,33 +388,44 @@ class Pipefy(object):
         }
         return self.request(query, headers).get('data', {}).get('cards', [])
 
-    
     def allCards(self, pipe_id, filter="", response_fields=None, headers={}):
         """ List cards: Get cards by pipe identifier. """
 
         response_fields = response_fields or 'edges { node { id title assignees { id }' \
-                ' comments { text } comments_count current_phase { name } done due_date ' \
-                'fields { name value } labels { name } phases_history { phase { name } firstTimeIn lastTimeOut } url } }'
+            ' comments { text } comments_count current_phase { name } done due_date ' \
+            'fields { name value } labels { name } phases_history { phase { name } firstTimeIn lastTimeOut } url } cursor }'
         query = '{ allCards(pipeId: %(pipe_id)s, filter: %(filter)s) { %(response_fields)s } }' % {
             'pipe_id': json.dumps(pipe_id),
             'filter': filter,
             'response_fields': response_fields,
         }
-        return self.request(query, headers).get('data', {}).get('allCards', [])
-
+        if not filter:
+            query = '{ allCards(pipeId: %(pipe_id)s) { %(response_fields)s } }' % {
+                'pipe_id': json.dumps(pipe_id),
+                'response_fields': response_fields,
+            }
+        edges = self.request(query, headers).get('data', {}).get('allCards', [])['edges']
+        while len(edges):
+            cursor = None
+            for edge in edges:
+                cursor = edge['cursor']
+                yield edge
+            query = f"""{{ allCards(pipeId: {pipe_id}, after: "{cursor}") {{ {response_fields} }} }}"""
+            if filter:
+                query = f"""{{ allCards(pipeId: {pipe_id}, after: "{cursor}", filter: {filter}) {{ {response_fields} }} }}"""
+            edges = self.request(query, headers).get('data', {}).get('allCards', [])['edges']
 
     def card(self, id, response_fields=None, headers={}):
         """ Show card: Get a card by its identifier. """
 
         response_fields = response_fields or 'title assignees { id } comments { id } comments_count' \
-                ' current_phase { name } done due_date fields { name value } labels { name } phases_history ' \
-                '{ phase { name } firstTimeIn lastTimeOut } url '
+            ' current_phase { name id } done due_date fields { name value } labels { name } phases_history ' \
+            '{ phase { name } firstTimeIn lastTimeOut } url '
         query = '{ card(id: %(id)s) { %(response_fields)s } }' % {
             'id': json.dumps(id),
             'response_fields': response_fields,
         }
         return self.request(query, headers).get('data', {}).get('card', [])
-
 
     def createCard(self, pipe_id, fields_attributes, parent_ids=[], response_fields=None, headers={}):
         """ Create card: Mutation to create a card, in case of success a query is returned. """
@@ -441,7 +448,6 @@ class Pipefy(object):
             'response_fields': response_fields,
         }
         return self.request(query, headers).get('data', {}).get('createCard', {}).get('card')
-
 
     def updateCard(self, id, title=None, due_date=None, assignee_ids=[], label_ids=[], response_fields=None, headers={}):
         """ Update card: Mutation to update a card, in case of success a query is returned. """
@@ -469,17 +475,15 @@ class Pipefy(object):
         }
         return self.request(query, headers).get('data', {}).get('updateCard', {}).get('card')
 
-
     def deleteCard(self, id, response_fields=None, headers={}):
         """ Delete card: Mutation to delete a card, in case of success success: true is returned. """
 
         response_fields = response_fields or 'success'
-        query = 'mutation { deleteCard(input: { id: %(id)s }) { %(response_fields)s }' % {
+        query = 'mutation { deleteCard(input: { id: %(id)s }) { %(response_fields)s } }' % {
             'id': json.dumps(id),
             'response_fields': response_fields,
         }
         return self.request(query, headers).get('data', {}).get('deleteCard', {})
-
 
     def moveCardToPhase(self, card_id, destination_phase_id, response_fields=None, headers={}):
         """ Move card to phase: Mutation to move a card to a phase, in case of success a query is returned. """
@@ -500,7 +504,6 @@ class Pipefy(object):
             'response_fields': response_fields,
         }
         return self.request(query, headers).get('data', {}).get('moveCardToPhase', {}).get('card')
-
 
     def updateCardField(self, card_id, field_id, new_value, response_fields=None, headers={}):
         """ Update card field: Mutation to update a card field, in case of success a query is returned. """
@@ -524,7 +527,6 @@ class Pipefy(object):
         }
         return self.request(query, headers).get('data', {}).get('updateCardField', {}).get('card')
 
-
     def createComment(self, card_id, text, response_fields=None, headers={}):
         """ Create comment: Mutation to create a comment, in case of success a query is returned. """
 
@@ -544,7 +546,6 @@ class Pipefy(object):
             'response_fields': response_fields,
         }
         return self.request(query, headers).get('data', {}).get('createComment', {}).get('comment')
-
 
     def updateComment(self, id, text, response_fields=None, headers={}):
         """ Update comment: Mutation to update a comment, in case of success a query is returned. """
@@ -566,7 +567,6 @@ class Pipefy(object):
         }
         return self.request(query, headers).get('data', {}).get('updateComment', {}).get('comment')
 
-
     def deleteComment(self, id, response_fields=None, headers={}):
         """ Delete comment: Mutation to delete a comment, in case of success success: true is returned. """
 
@@ -576,7 +576,6 @@ class Pipefy(object):
             'response_fields': response_fields,
         }
         return self.request(query, headers).get('data', {}).get('deleteComment', {})
-
 
     def setRole(self, pipe_id, member, response_fields=None, headers={}):
         """ Set role: Mutation to set a user's role, in case of success a query is returned. """
@@ -598,23 +597,21 @@ class Pipefy(object):
         }
         return self.request(query, headers).get('data', {}).get('setRole', {}).get('comment')
 
-
     def pipe_relations(self, ids, response_fields=None, headers={}):
         """ Show pipe relations: Get pipe relations by their identifiers. """
 
         response_fields = response_fields or 'id name allChildrenMustBeDoneToMoveParent allChildrenMustBeDoneToFinishParent' \
-                                ' canCreateNewItems canConnectExistingItems canConnectMultipleItems childMustExistToMoveParent ' \
-                                'childMustExistToFinishParent'
+            ' canCreateNewItems canConnectExistingItems canConnectMultipleItems childMustExistToMoveParent ' \
+            'childMustExistToFinishParent'
         query = '{ pipe_relations(ids: [%(ids)s]) { %(response_fields)s } }' % {
             'ids': ', '.join([json.dumps(id) for id in ids]),
             'response_fields': response_fields,
         }
         return self.request(query, headers).get('data', {}).get('pipe_relations')
 
-
     def createPipeRelation(self, parentId, childId, name, allChildrenMustBeDoneToFinishParent, childMustExistToMoveParent,
-            childMustExistToFinishParent, allChildrenMustBeDoneToMoveParent, canCreateNewItems, canConnectExistingItems,
-            canConnectMultipleItems, response_fields=None, headers={}):
+                           childMustExistToFinishParent, allChildrenMustBeDoneToMoveParent, canCreateNewItems, canConnectExistingItems,
+                           canConnectMultipleItems, response_fields=None, headers={}):
         """ Create pipe relation: Mutation to create a pipe relation between two pipes, in case of success a query is returned. """
 
         response_fields = response_fields or 'pipeRelation { id name }'
@@ -650,10 +647,9 @@ class Pipefy(object):
         }
         return self.request(query, headers).get('data', {}).get('createPipeRelation', {}).get('pipeRelation')
 
-
     def updatePipeRelation(self, id, name, allChildrenMustBeDoneToFinishParent, childMustExistToMoveParent,
-            childMustExistToFinishParent, allChildrenMustBeDoneToMoveParent, canCreateNewItems, canConnectExistingItems,
-            canConnectMultipleItems, response_fields=None, headers={}):
+                           childMustExistToFinishParent, allChildrenMustBeDoneToMoveParent, canCreateNewItems, canConnectExistingItems,
+                           canConnectMultipleItems, response_fields=None, headers={}):
         """ Update pipe relation: Mutation to update a pipe relation, in case of success a query is returned. """
 
         response_fields = response_fields or 'pipeRelation { id name }'
@@ -687,7 +683,6 @@ class Pipefy(object):
         }
         return self.request(query, headers).get('data', {}).get('updatePipeRelation', {}).get('pipeRelation')
 
-
     def deletePipeRelation(self, id, response_fields=None, headers={}):
         """ Delete pipe relation: Mutation to delete a pipe relation, in case of success success: true is returned. """
 
@@ -698,7 +693,6 @@ class Pipefy(object):
         }
         return self.request(query, headers).get('data', {}).get('deletePipeRelation', {})
 
-
     def tables(self, ids, response_fields=None, headers={}):
         """ List tables: Get tables through table ids. """
 
@@ -708,7 +702,6 @@ class Pipefy(object):
             'response_fields': response_fields,
         }
         return self.request(query, headers).get('data', {}).get('tables')
-
 
     def table(self, id, response_fields=None, headers={}):
         """ Show table: Get a table through table id. """
@@ -722,7 +715,6 @@ class Pipefy(object):
             'response_fields': response_fields,
         }
         return self.request(query, headers).get('data', {}).get('table')
-
 
     def createTable(self, organization_id, name, description, public, authorization, response_fields=None, headers={}):
         """ Create table: Mutation to create a table, in case of success a query is returned. """
@@ -750,9 +742,8 @@ class Pipefy(object):
         }
         return self.request(query, headers).get('data', {}).get('createTable', {}).get('table')
 
-
     def updateTable(self, id, name, description, public, authorization, icon, create_record_button_label,
-            title_field_id, public_form, summary_attributes,  response_fields=None, headers={}):
+                    title_field_id, public_form, summary_attributes,  response_fields=None, headers={}):
         """ Update table: Mutation to update a table, in case of success a query is returned. """
 
         response_fields = response_fields or 'table { id name description public authorization }'
@@ -788,7 +779,6 @@ class Pipefy(object):
         }
         return self.request(query, headers).get('data', {}).get('updateTable', {}).get('table')
 
-
     def deleteTable(self, id, response_fields=None, headers={}):
         """ Delete table: Mutation to delete a table, in case of success a query with the field success is returned. """
 
@@ -799,9 +789,8 @@ class Pipefy(object):
         }
         return self.request(query, headers).get('data', {}).get('deleteTable', {})
 
-
     def createTableField(self, table_id, type, label, options, description, help, required,
-            minimal_view, custom_validation, response_fields=None, headers={}):
+                         minimal_view, custom_validation, response_fields=None, headers={}):
         """ Create table field: Mutation to create a table field, in case of success a query is returned. """
 
         response_fields = response_fields or 'table_field { id label type options description help required minimal_view custom_validation }'
@@ -835,9 +824,8 @@ class Pipefy(object):
         }
         return self.request(query, headers).get('data', {}).get('createTableField', {}).get('table_field')
 
-
     def updateTableField(self, table_id, id, label, options, description, help, required,
-            minimal_view, custom_validation, response_fields=None, headers={}):
+                         minimal_view, custom_validation, response_fields=None, headers={}):
         """ Update table field: Mutation to update a table field, in case of success a query is returned. """
 
         response_fields = response_fields or 'table_field { id label type options description help required minimal_view custom_validation }'
@@ -871,7 +859,6 @@ class Pipefy(object):
         }
         return self.request(query, headers).get('data', {}).get('updateTableField', {}).get('table_field')
 
-
     def setTableFieldOrder(self, table_id, field_ids, response_fields=None, headers={}):
         """ Set table record field value Mutation to set a table field order, in case of success a query with the field success is returned. """
 
@@ -892,8 +879,6 @@ class Pipefy(object):
         }
         return self.request(query, headers).get('data', {}).get('setTableFieldOrder', {}).get('table_field')
 
-
-
     def deleteTableField(self, table_id, id, response_fields=None, headers={}):
         """ Delete table field: Mutation to delete a table field, in case of success a query with the field success is returned. """
 
@@ -904,7 +889,6 @@ class Pipefy(object):
             'response_fields': response_fields,
         }
         return self.request(query, headers).get('data', {}).get('deleteTableField', {})
-
 
     def table_records(self, table_id, first=10, response_fields=None, headers={}, search={}):
         """ List table records: Get table records with pagination through table id. """
@@ -955,7 +939,6 @@ class Pipefy(object):
         }
         return self.request(query, headers).get('data', {}).get('createTableRecord', {}).get('table_record')
 
-
     def updateTableRecord(self, id, title, due_date, response_fields=None, headers={}):
         """ Update table record: Mutation to update a table record, in case of success a query is returned. """
 
@@ -978,7 +961,6 @@ class Pipefy(object):
         }
         return self.request(query, headers).get('data', {}).get('updateTableRecord', {}).get('table_record')
 
-
     def setTableRecordFieldValue(self, table_record_id, field_id, value, response_fields=None, headers={}):
         """ Set table record field value: Mutation to set a table record field value, in case of success a query with the field success is returned. """
 
@@ -1000,7 +982,6 @@ class Pipefy(object):
             'response_fields': response_fields,
         }
         return self.request(query, headers).get('data', {}).get('setTableRecordFieldValue', {})
-
 
     def deleteTableRecord(self, id, response_fields=None, headers={}):
         """ Delete table record: Mutation to delete a table record, in case of success a query with the field success is returned. """
