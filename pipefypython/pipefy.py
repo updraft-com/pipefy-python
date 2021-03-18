@@ -532,12 +532,16 @@ class Pipefy(object):
         response_fields = response_fields or 'card{ id }'
         fields = ""
         for field_id, value in field_value_tuples:
+            if isinstance(value, str):
+                formatted_value = f'"{value}"'
+            else:
+                formatted_value = json.dumps(value)
             fields += f'''
               {field_id.replace(' ', '_')}: updateCardField(
                 input: {{
                   card_id: {card_id}
                   field_id: "{field_id}"
-                  new_value: "{value}"
+                  new_value: {formatted_value}
                 }}
               ) {{ {response_fields} }}
           '''
