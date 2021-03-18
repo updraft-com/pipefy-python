@@ -527,6 +527,27 @@ class Pipefy(object):
         }
         return self.request(query, headers).get('data', {}).get('updateCardField', {}).get('card')
 
+    def updateCardFields(self, card_id, field_value_tuples, response_fields=None, headers={}):
+        """ Update multiple card fields in a tuple as a single request """
+        response_fields = response_fields or 'card{ id }'
+        fields = ""
+        for field_id, value in field_value_tuples:
+            fields += f'''
+              {field_id.replace(' ', '_')} updateCardField(
+                input: {{
+                  card_id: {card_id}
+                  field_id: "{field_id}"
+                  new_value: "{value}"
+                }}
+              ) {{ {response_fields} }}
+          '''
+        query = f'''
+            mutation {{
+              {fields}
+            }}
+        '''
+        return self.request(query, headers).get('data', {})
+
     def createComment(self, card_id, text, response_fields=None, headers={}):
         """ Create comment: Mutation to create a comment, in case of success a query is returned. """
 
