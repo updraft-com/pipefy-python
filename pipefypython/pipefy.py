@@ -533,7 +533,7 @@ class Pipefy(object):
         fields = ""
         for field_id, value in field_value_tuples:
             fields += f'''
-              {field_id.replace(' ', '_')} updateCardField(
+              {field_id.replace(' ', '_')}: updateCardField(
                 input: {{
                   card_id: {card_id}
                   field_id: "{field_id}"
